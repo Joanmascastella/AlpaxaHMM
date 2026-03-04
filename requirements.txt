@@ -1,0 +1,5 @@
+colorama>=0.4.6
+yfinance>=0.2.66
+numpy>=2.0.0
+scipy>=1.13.0
+statsmodels>=0.14.0
