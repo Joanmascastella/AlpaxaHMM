@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 from hmmlearn import hmm
+from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,11 @@ def _rolling_regime_forecast(
     # Reporting dates — last observation on or before each period boundary
     report_dates = X.resample(report_alias).last().dropna(how='all').index
 
+    use_scaler = len(cols) > 1
+
     records: list[dict] = []
     model: hmm.GaussianHMM | None = None
+    scaler: StandardScaler | None = None
 
     for i, report_date in enumerate(report_dates):
         window = X.loc[:report_date].iloc[-window_size:]
@@ -133,7 +137,12 @@ def _rolling_regime_forecast(
                     min_covar=1e-4,
                     random_state=42,
                 )
-                candidate.fit(window.values)
+                if use_scaler:
+                    scaler = StandardScaler()
+                    window_scaled = scaler.fit_transform(window.values)
+                else:
+                    window_scaled = window.values
+                candidate.fit(window_scaled)
                 _sort_states(candidate, col=sort_col)
                 model = candidate
                 logger.info(f'HMM refit at {report_date.date()}  window={len(window)}')
@@ -143,7 +152,8 @@ def _rolling_regime_forecast(
 
         try:
             # At t=T, smoothed[-1] == filtered[-1] (no future observations)
-            filtered = model.predict_proba(window.values)[-1]
+            scaled = scaler.transform(window.values) if use_scaler else window.values
+            filtered = model.predict_proba(scaled)[-1]
 
             # Forecast one reporting period ahead via transition matrix power
             forecast = filtered @ np.linalg.matrix_power(model.transmat_, steps)
