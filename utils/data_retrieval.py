@@ -30,7 +30,7 @@ class DataRetrieval:
             'close':  raw['Close'],
             'volume': raw['Volume'],
             'log_returns': np.log(raw['Close'] / raw['Close'].shift(1)),
-            'log_vol': np.log(raw['Close'] / raw['Close'].shift(1).rolling(window=4).std()),
+            'log_vol': np.log(raw['Close'] / raw['Close'].shift(1)).rolling(window=4).std(),
         })
 
         df = df.dropna(axis=0)

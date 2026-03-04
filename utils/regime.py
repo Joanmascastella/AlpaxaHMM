@@ -130,6 +130,7 @@ def _rolling_regime_forecast(
                     covariance_type='full',
                     n_iter=200,
                     tol=1e-4,
+                    min_covar=1e-4,
                     random_state=42,
                 )
                 candidate.fit(window.values)
