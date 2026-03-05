@@ -27,7 +27,7 @@ class Data:
         # log 
         logger.info(config)
         
-        # Retrieve fields
+        # Retrieve fields from config
         asset_type = config.asset_type
         ticker = config.ticker
         start_date = config.start_date.replace('/', '-')

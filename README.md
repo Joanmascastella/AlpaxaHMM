@@ -5,6 +5,14 @@ market and macroeconomic data, producing probabilistic regime forecasts you can 
 in a notebook or apply to a machine learning model.
 
 ---
+## Before you begin
+You will need to perform the following steps
+1. Visit: https://fred.stlouisfed.org/ 
+2. Get an API key 
+3. Create a .env file in the project directory
+4. In the .env file add 'FRED_API_KEY=YOUR-API-KEY'
+
+---
 ## Running the framework
 Run the main.py.
 

@@ -32,7 +32,7 @@ _STEPS_MAP: dict[str, dict[str, int]] = {
     '3mo': {'Daily': 1, 'Weekly': 1,  'Monthly': 1,  'Quarterly': 1},
 }
 
-# Rolling window size in data-cardinality units (~2 years each)
+# Rolling window size in data-cardinality units (min 2 years each)
 _DEFAULT_WINDOW: dict[str, int] = {
     '1d':  504,
     '1wk': 104,
@@ -41,14 +41,15 @@ _DEFAULT_WINDOW: dict[str, int] = {
 }
 
 # How often to refit the HMM (in reporting periods)
+# All once in calendar month
 _REFIT_EVERY: dict[str, int] = {
-    'Daily':     21,   # once per calendar month
-    'Weekly':    4,    # once per calendar month
+    'Daily':     21,   
+    'Weekly':    4,    
     'Monthly':   1,
     'Quarterly': 1,
 }
 
-# Observation columns fed into GaussianHMM for each feature_set
+# Observation columns fed into GaussianHMM dependent on each feature_set
 _FEATURE_COLS: dict[str, list[str]] = {
     'returns': ['log_returns'],
     'macro':   ['log_returns', 'close_vix', 'close_hy', 'close_ten_yr',
@@ -56,7 +57,7 @@ _FEATURE_COLS: dict[str, list[str]] = {
     'rvv':     ['log_returns', 'volume', 'log_vol'],
 }
 
-# Column index used to sort states (ascending = calm→stress)
+# Column index used to sort states by mean value to prevent label switching.
 # macro: VIX at index 1 → low VIX = regime 0 (calm)
 # returns / rvv: log_returns at index 0 → low returns = regime 0 (bearish)
 _SORT_COL: dict[str, int] = {
@@ -67,8 +68,8 @@ _SORT_COL: dict[str, int] = {
 
 
 # Helpers
+# Sorts states by using the specified column in _SORT_COL to prevent label switching between fits.
 def _sort_states(model: hmm.GaussianHMM, col: int) -> None:
-    """Re-order hidden states by ascending mean of `col` to prevent label switching."""
     order = np.argsort(model.means_[:, col])
     model.means_      = model.means_[order]
     model.covars_     = model.covars_[order]
@@ -86,6 +87,7 @@ def _rolling_regime_forecast(
     refit_every: int,
 ) -> pd.DataFrame | None:
 
+    # Configure frequency-dependent parameters
     steps      = _STEPS_MAP[data_cardinality][reporting_freq]
     sort_col   = _SORT_COL.get(feature_set, 0)
     report_alias = _REPORT_FREQ[reporting_freq]
@@ -113,23 +115,27 @@ def _rolling_regime_forecast(
     report_dates = X.resample(report_alias).last().dropna(how='all').index
 
     use_scaler = len(cols) > 1
-    # Scaled features have unit variance — min_covar must be proportionally larger.
-    # Unscaled log_returns has variance ~1e-4, so 1e-4 is meaningful there.
+    # HMM covarience regularistion parameter - higher scales are needed for unscaled data 
+    # to prevent singular matrix errors, especially with more features and regimes.
     min_covar = 1e-2 if use_scaler else 1e-4
 
+    # Initialize model, scaler, and output records list
     records: list[dict] = []
     model: hmm.GaussianHMM | None = None
     scaler: StandardScaler | None = None
 
+    # Iterate through report dates, fit -> foreceast -> record
     for i, report_date in enumerate(report_dates):
         window = X.loc[:report_date].iloc[-window_size:]
 
-        # Burn-in guard: need at least half the window and enough rows per regime
+        # If statement to ensure that we have enough data to fill the window, 
+        # otherwise the model fit can fail or produce unreliable results. 
         if len(window) < max(window_size // 2, k_regimes * 10):
             logger.debug(f'Skipping {report_date.date()} — insufficient rows ({len(window)})')
             continue
 
         # Refit on schedule
+        # Dependent on users choice of report frequency and data cardinality
         if model is None or i % refit_every == 0:
             try:
                 candidate = hmm.GaussianHMM(
@@ -140,6 +146,7 @@ def _rolling_regime_forecast(
                     min_covar=min_covar,
                     random_state=42,
                 )
+                # Only use scaler for macro and rvv feature sets
                 if use_scaler:
                     scaler = StandardScaler()
                     window_scaled = scaler.fit_transform(window.values)
@@ -154,13 +161,14 @@ def _rolling_regime_forecast(
                 continue
 
         try:
-            # At t=T, smoothed[-1] == filtered[-1] (no future observations)
+            # At timestep t, smoothed[t] incorporates information from the entire window, 
+            # while filtered[t] only uses information up to t.
             scaled = scaler.transform(window.values) if use_scaler else window.values
             with np.errstate(divide='ignore', invalid='ignore'):
                 proba = model.predict_proba(scaled)
             filtered = proba[-1]
-            # Extreme outliers can push all component log-likelihoods to -inf,
-            # causing NaN after normalisation. Fall back to uniform uncertainty.
+            # Check for NaNs or infinite values in the probabilities.
+            # If any are found, or if the probabilities sum to zero (which can happen if all states have very low likelihood)
             if not np.isfinite(filtered).all() or filtered.sum() == 0:
                 logger.warning(f'predict_proba returned NaN at {report_date.date()} — falling back to uniform')
                 filtered = np.ones(k_regimes) / k_regimes
@@ -168,6 +176,7 @@ def _rolling_regime_forecast(
             # Forecast one reporting period ahead via transition matrix power
             forecast = filtered @ np.linalg.matrix_power(model.transmat_, steps)
 
+            # Append records for the current report date
             records.append({
                 'date':            report_date,
                 'current_regime':  int(np.argmax(filtered)),
@@ -185,7 +194,7 @@ def _rolling_regime_forecast(
 
     result = pd.DataFrame(records).set_index('date')
 
-    # Explode probability arrays into named columns
+    # Transfer probability arrays into named columns
     cur_cols   = [f'p{i}_current'  for i in range(k_regimes)]
     fcast_cols = [f'p{i}_forecast' for i in range(k_regimes)]
 
@@ -194,7 +203,9 @@ def _rolling_regime_forecast(
 
     out = pd.concat([result, cur_df, fcast_df], axis=1)
 
-    # Regime entropy normalised to [0, 1].
+    # Calculate entropy of current and forecast distributions 
+    # Normalized by log(k) so that it ranges from 0 (one regime has all the probability) to 1 (uniform distribution).
+    # This gives a measure of regime uncertainty and certainty in the current and forecasted regimes. 
     p_current  = out[cur_cols].values.clip(1e-12, 1)
     p_forecast = out[fcast_cols].values.clip(1e-12, 1)
     log_k      = np.log(k_regimes)

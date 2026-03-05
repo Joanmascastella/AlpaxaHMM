@@ -4,14 +4,16 @@ import yfinance as yf
 class RunTimeUtils:
     def __init__(self) -> None:
         pass
-
+    
+    # Validate ticker format 
     def validate_ticker(self, v):
         v = v.strip().upper()
         if not v:           return "Ticker cannot be empty."
         if not v.isalpha(): return "Ticker must contain only letters (e.g. AAPL)."
         if len(v) > 5:      return "Ticker too long — max 5 characters."
         return ""
-
+    
+    # Validate output path and ensure parent directory exists
     def validate_path(self, v):
         v = v.strip()
         if not v: return "Path cannot be empty."
@@ -19,7 +21,8 @@ class RunTimeUtils:
         if parent and not os.path.exists(parent):
             return f"Directory does not exist: {parent}"
         return ""
-
+    
+    # Validate date in YYYY/MM/DD format with basic checks 
     def validate_date(self, v):
         v = v.strip()
         if not v:
@@ -39,6 +42,7 @@ class RunTimeUtils:
             return "Day must be between 01 and 31."
         return ""
     
+    # Check if ticker exists in yfinance
     def ticker_exists(self, ticker: str) -> bool:
         try:
             response = yf.Ticker(ticker).history(period="1d")
