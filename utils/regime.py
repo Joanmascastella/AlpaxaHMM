@@ -194,7 +194,7 @@ def _rolling_regime_forecast(
 
     out = pd.concat([result, cur_df, fcast_df], axis=1)
 
-    # Regime entropy (normalised to [0, 1]) for current and forecast distributions
+    # Regime entropy normalised to [0, 1].
     p_current  = out[cur_cols].values.clip(1e-12, 1)
     p_forecast = out[fcast_cols].values.clip(1e-12, 1)
     log_k      = np.log(k_regimes)
