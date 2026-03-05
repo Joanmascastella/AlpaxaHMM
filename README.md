@@ -8,7 +8,7 @@ in a notebook or apply to a machine learning model.
 ## Running the framework
 Run the main.py.
 
-The wizard walks through **7 steps**. Navigate with arrow keys; press `Enter` to confirm,
+The pipeline walks through **7 steps**. Navigate with arrow keys; press `Enter` to confirm,
 `Q` to quit.
 
 ---
@@ -278,7 +278,7 @@ The results CSV has one row per reporting period:
 
 ## Visualisation (notebook)
 
-Load `notebooks/test.ipynb` and call `plot_regime_forecast` after running the wizard:
+Load `notebooks/test.ipynb` and call `plot_regime_forecast` after running the pipeline:
 
 The chart renders two panels:
 - **Top** — log-scale price with colour-coded regime shading
