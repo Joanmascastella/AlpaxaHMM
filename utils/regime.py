@@ -192,4 +192,14 @@ def _rolling_regime_forecast(
     cur_df   = pd.DataFrame(result.pop('current_probs').tolist(),  index=result.index, columns=cur_cols)
     fcast_df = pd.DataFrame(result.pop('forecast_probs').tolist(), index=result.index, columns=fcast_cols)
 
-    return pd.concat([result, cur_df, fcast_df], axis=1)
+    out = pd.concat([result, cur_df, fcast_df], axis=1)
+
+    # Regime entropy (normalised to [0, 1]) for current and forecast distributions
+    p_current  = out[cur_cols].values.clip(1e-12, 1)
+    p_forecast = out[fcast_cols].values.clip(1e-12, 1)
+    log_k      = np.log(k_regimes)
+    out['entropy_current']  = -np.sum(p_current  * np.log(p_current),  axis=1) / log_k
+    out['entropy_forecast'] = -np.sum(p_forecast * np.log(p_forecast), axis=1) / log_k
+
+    return out
+
