@@ -5,7 +5,7 @@ market and macroeconomic data, producing probabilistic regime forecasts you can 
 in a notebook or apply to a machine learning model.
 
 ---
-## Running the wizard
+## Running the framework
 Run the main.py.
 
 The wizard walks through **7 steps**. Navigate with arrow keys; press `Enter` to confirm,
@@ -13,7 +13,7 @@ The wizard walks through **7 steps**. Navigate with arrow keys; press `Enter` to
 
 ---
 
-## Wizard walkthrough
+## Framework walkthrough
 
 ### Step 1 — Asset Type
 
