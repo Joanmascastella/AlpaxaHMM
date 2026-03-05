@@ -113,6 +113,9 @@ def _rolling_regime_forecast(
     report_dates = X.resample(report_alias).last().dropna(how='all').index
 
     use_scaler = len(cols) > 1
+    # Scaled features have unit variance — min_covar must be proportionally larger.
+    # Unscaled log_returns has variance ~1e-4, so 1e-4 is meaningful there.
+    min_covar = 1e-2 if use_scaler else 1e-4
 
     records: list[dict] = []
     model: hmm.GaussianHMM | None = None
@@ -134,7 +137,7 @@ def _rolling_regime_forecast(
                     covariance_type='full',
                     n_iter=200,
                     tol=1e-4,
-                    min_covar=1e-4,
+                    min_covar=min_covar,
                     random_state=42,
                 )
                 if use_scaler:
@@ -153,7 +156,14 @@ def _rolling_regime_forecast(
         try:
             # At t=T, smoothed[-1] == filtered[-1] (no future observations)
             scaled = scaler.transform(window.values) if use_scaler else window.values
-            filtered = model.predict_proba(scaled)[-1]
+            with np.errstate(divide='ignore', invalid='ignore'):
+                proba = model.predict_proba(scaled)
+            filtered = proba[-1]
+            # Extreme outliers can push all component log-likelihoods to -inf,
+            # causing NaN after normalisation. Fall back to uniform uncertainty.
+            if not np.isfinite(filtered).all() or filtered.sum() == 0:
+                logger.warning(f'predict_proba returned NaN at {report_date.date()} — falling back to uniform')
+                filtered = np.ones(k_regimes) / k_regimes
 
             # Forecast one reporting period ahead via transition matrix power
             forecast = filtered @ np.linalg.matrix_power(model.transmat_, steps)
