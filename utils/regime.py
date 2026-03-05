@@ -202,4 +202,3 @@ def _rolling_regime_forecast(
     out['entropy_forecast'] = -np.sum(p_forecast * np.log(p_forecast), axis=1) / log_k
 
     return out
-
